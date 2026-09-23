@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "materials-ml-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model-agnostic evaluation utilities for machine-learning interatomic potentials"
 requires-python = ">=3.10"
 dependencies = ["pandas>=2.2", "numpy>=1.26"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+nequip = ["ase>=3.23"]
+dev = ["pytest>=8", "ase>=3.23"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
