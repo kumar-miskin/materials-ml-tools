@@ -22,10 +22,39 @@ python -m materials_ml_tools.metrics examples/predictions.csv
 
 ## Output conventions
 
-- `energy_mae_per_atom`: mean absolute error of structure energy divided by atom count
-- `force_component_rmse`: RMSE over all Cartesian force components
-- `force_vector_mae`: mean Euclidean norm of each atom's force-error vector
-- per-element component RMSE, to expose composition-dependent failures
+For structure s with N_s atoms and force error e_i = F_pred,i - F_true,i on atom i (N atoms in total):
+
+| Field | Formula | Aggregated over |
+|---|---|---|
+| `energy_mae_per_atom` | mean_s \|E_pred,s - E_true,s\| / N_s | structures |
+| `force_component_rmse` | sqrt( sum_i sum_{a in x,y,z} e_ia^2 / (3N) ) | all 3N Cartesian components |
+| `force_vector_mae` | mean_i \|\|e_i\|\| | atoms (Euclidean norm per atom) |
+| `force_vector_rmse` | sqrt( sum_i \|\|e_i\|\|^2 / N ) | atoms |
+| `force_component_rmse_by_element` | component RMSE restricted to atoms of each element | components, per element |
+
+`force_vector_rmse` is always sqrt(3) times `force_component_rmse` for the same errors, because the numerator is identical and only the denominator changes (N vs 3N). There is no fixed conversion between component MAE and vector MAE, so an MAE should never be compared across papers or codes without knowing which one it is. NequIP's `misc/parity_plot.py`, for example, flattens the Nx3 force array before averaging, so its force MAE/RMSE are component-wise.
+
+## NequIP adapter
+
+`materials_ml_tools.adapters` converts the extended-XYZ file written by `nequip.train.callbacks.TestTimeXYZFileWriter` into the input table above. Configure the writer to keep the reference values:
+
+```yaml
+callbacks:
+  - _target_: nequip.train.callbacks.TestTimeXYZFileWriter
+    out_file: ${hydra:runtime.output_dir}/test
+    output_fields_from_original_dataset: [total_energy, forces]
+    chemical_symbols: ${chemical_symbols}
+```
+
+Then:
+
+```bash
+pip install -e '.[nequip]'
+python -m materials_ml_tools.adapters test_dataset0.xyz --energy-unit eV --force-unit eV/Angstrom --out predictions.csv
+python -m materials_ml_tools.metrics predictions.csv
+```
+
+The XYZ file does not record units, so `--energy-unit` and `--force-unit` are required and are written with the source SHA-256 and frame count to `predictions.csv.meta.json`. Structure IDs are `<file stem>:<frame index>` in file order. Files missing `original_dataset_energy` or `original_dataset_forces` are rejected rather than guessed.
 
 Units are inherited from the input and must be recorded by the caller. The tool does not imply benchmark comparability when datasets, splits, reference methods, or units differ.
 
