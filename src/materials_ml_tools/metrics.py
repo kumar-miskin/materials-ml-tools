@@ -10,6 +10,8 @@ REQUIRED = {"structure_id", "element", "n_atoms", "energy_true", "energy_pred", 
 def evaluate(df: pd.DataFrame) -> dict:
     missing = sorted(REQUIRED - set(df.columns))
     if missing: raise ValueError(f"missing columns: {', '.join(missing)}")
+    # groupby().groups returns index labels; positional lookups below need a clean index
+    df = df.reset_index(drop=True)
     structures = df.drop_duplicates("structure_id")
     energy_per_atom = (structures.energy_pred - structures.energy_true) / structures.n_atoms
     true = df[["fx_true", "fy_true", "fz_true"]].to_numpy(float)
@@ -25,6 +27,7 @@ def evaluate(df: pd.DataFrame) -> dict:
         "energy_mae_per_atom": float(np.mean(np.abs(energy_per_atom))),
         "force_component_rmse": float(np.sqrt(np.mean(error**2))),
         "force_vector_mae": float(np.mean(np.linalg.norm(error, axis=1))),
+        "force_vector_rmse": float(np.sqrt(np.mean(np.sum(error**2, axis=1)))),
         "force_component_rmse_by_element": per_element,
     }
 
