@@ -71,3 +71,26 @@ The interface is deliberately framework-neutral. Useful public projects include:
 - pymatgen: https://github.com/materialsproject/pymatgen
 
 This repository uses only public APIs, documentation and example-shaped data. It contains no unpublished research data.
+
+## MACE evaluation adapter
+
+After `mace_eval_configs --configs input.xyz --model model.model --output output.xyz`,
+convert its extended XYZ to the same metrics input. MACE writes predictions to
+`MACE_energy` and `MACE_forces` by default (`--info_prefix` changes the prefix).
+The reference energy and force field names depend on the input data, so name
+both explicitly instead of guessing them:
+
+```bash
+pip install -e '.[dev]'
+materials-ml-mace-xyz output.xyz --energy-key REF_energy --forces-key REF_forces \
+    --energy-unit eV --force-unit eV/Angstrom --out predictions.csv
+python -m materials_ml_tools.metrics predictions.csv
+```
+
+Substitute the *actual* reference field names in your XYZ; `REF_energy` and
+`REF_forces` are examples, not defaults. For a custom MACE `--info_prefix`, pass
+`--prediction-prefix` with the same value. The adapter requires all four fields,
+finite scalar energies, and finite Nx3 forces per frame. It records keys, units,
+file SHA-256 and frame count beside the CSV. It does not run MACE or infer units,
+model provenance, split membership, or reference methods; do not compare scores
+across runs without checking those conditions.
