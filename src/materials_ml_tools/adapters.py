@@ -112,3 +112,86 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def read_mace_xyz(
+    path: str | Path, *, energy_key: str, forces_key: str,
+    energy_unit: str, force_unit: str, prediction_prefix: str = "MACE_",
+) -> tuple[pd.DataFrame, dict]:
+    """Convert ``mace_eval_configs --output`` extended XYZ to the flat contract.
+
+    The MACE evaluation CLI stores predicted energy and forces in ``atoms.info``
+    and ``atoms.arrays`` under ``<info_prefix>energy/forces``. Reference keys
+    depend on the caller's training data and must be named explicitly. Never
+    infer references from the ASE calculator or a similarly named array.
+    """
+    import ase.io  # optional dependency
+
+    energy_unit = _require_unit("energy_unit", energy_unit)
+    force_unit = _require_unit("force_unit", force_unit)
+    if not energy_key or not forces_key:
+        raise ValueError("energy_key and forces_key must name the reference fields")
+    if prediction_prefix is None:
+        raise ValueError("prediction_prefix must be a string (empty is allowed)")
+    predicted_energy_key = prediction_prefix + "energy"
+    predicted_forces_key = prediction_prefix + "forces"
+    if energy_key == predicted_energy_key or forces_key == predicted_forces_key:
+        raise ValueError("reference keys must differ from prediction keys")
+    path = Path(path)
+    rows = []
+    n_frames = 0
+    for index, frame in enumerate(ase.io.iread(str(path), index=":", format="extxyz")):
+        n_frames += 1
+        where = f"{path.name} frame {index}"
+        missing = [key for key, fields in (
+            (energy_key, frame.info), (predicted_energy_key, frame.info),
+            (forces_key, frame.arrays), (predicted_forces_key, frame.arrays),
+        ) if key not in fields]
+        if missing:
+            raise ValueError(f"{where}: missing field(s): {', '.join(missing)}")
+        n_atoms = len(frame)
+        if n_atoms == 0:
+            raise ValueError(f"{where}: empty frame")
+        energies = []
+        for key in (energy_key, predicted_energy_key):
+            value = np.asarray(frame.info[key], dtype=float)
+            if value.shape != () or not np.isfinite(value).all():
+                raise ValueError(f"{where}: {key} must be a finite scalar energy")
+            energies.append(float(value))
+        forces = []
+        for key in (forces_key, predicted_forces_key):
+            value = np.asarray(frame.arrays[key], dtype=float)
+            if value.shape != (n_atoms, 3) or not np.isfinite(value).all():
+                raise ValueError(f"{where}: {key} must have finite shape ({n_atoms}, 3)")
+            forces.append(value)
+        for symbol, true, pred in zip(frame.get_chemical_symbols(), *forces):
+            rows.append((f"{path.stem}:{index}", symbol, n_atoms, *energies, *true, *pred))
+    if not rows:
+        raise ValueError(f"{path}: no frames found")
+    metadata = {
+        "source_format": "mace_eval_configs", "source_path": str(path),
+        "source_sha256": _sha256(path), "frames": n_frames,
+        "energy_key": energy_key, "forces_key": forces_key,
+        "prediction_prefix": prediction_prefix,
+        "energy_unit": energy_unit, "force_unit": force_unit,
+    }
+    return pd.DataFrame(rows, columns=COLUMNS), metadata
+
+
+def mace_main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(description="Convert MACE evaluation XYZ to the flat prediction table")
+    p.add_argument("xyz", type=Path)
+    p.add_argument("--energy-key", required=True, help="reference energy key in atoms.info")
+    p.add_argument("--forces-key", required=True, help="reference force key in atoms.arrays")
+    p.add_argument("--prediction-prefix", default="MACE_", help="mace_eval_configs --info_prefix (default MACE_)")
+    p.add_argument("--energy-unit", required=True)
+    p.add_argument("--force-unit", required=True)
+    p.add_argument("--out", type=Path, required=True)
+    args = p.parse_args(argv)
+    table, metadata = read_mace_xyz(
+        args.xyz, energy_key=args.energy_key, forces_key=args.forces_key,
+        prediction_prefix=args.prediction_prefix,
+        energy_unit=args.energy_unit, force_unit=args.force_unit,
+    )
+    table.to_csv(args.out, index=False)
+    args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
