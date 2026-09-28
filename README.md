@@ -94,3 +94,43 @@ finite scalar energies, and finite Nx3 forces per frame. It records keys, units,
 file SHA-256 and frame count beside the CSV. It does not run MACE or infer units,
 model provenance, split membership, or reference methods; do not compare scores
 across runs without checking those conditions.
+
+## MatGL ASE evaluation adapter
+
+MatGL's `PESCalculator` uses the standard ASE `energy` and `forces` results.
+Keep your reference values under separate explicit keys before attaching the
+calculator, then serialize the ASE atoms as extended XYZ. For example:
+
+```python
+import ase.io
+from matgl.ext.ase import PESCalculator
+
+# `potential` is a MatGL Potential loaded for your own published model.
+# `reference_frames` is your held-out ASE Atoms dataset; use your actual
+# source's reference units and keep its split and methodology metadata.
+for atoms in reference_frames:
+    atoms.info["ref_energy"] = float(atoms.get_potential_energy())
+    atoms.arrays["ref_forces"] = atoms.get_forces().copy()
+    atoms.calc = PESCalculator(potential)
+    atoms.get_potential_energy()  # populate ASE calculator results
+    atoms.get_forces()
+ase.io.write("matgl_eval.xyz", reference_frames, format="extxyz")
+```
+
+This preparation assumes `reference_frames` initially has a valid reference
+calculator. If not, read the reference values from your dataset explicitly.
+There is no model inference in this adapter and no MatGL dependency at conversion
+time. Convert and score:
+
+```bash
+materials-ml-matgl-xyz matgl_eval.xyz --reference-energy-key ref_energy \
+    --reference-forces-key ref_forces --energy-unit eV \
+    --force-unit eV/Angstrom --out predictions.csv
+python -m materials_ml_tools.metrics predictions.csv
+```
+
+The adapter fails on missing, nonfinite or wrong-shaped values rather than
+substituting predictions for labels. It records source SHA-256, frame count,
+reference key names and declared units. Validate the model's predicted units
+against the dataset's units; a CSV does not prove reference methods, model
+provenance, sample independence or a fair cross-model comparison.

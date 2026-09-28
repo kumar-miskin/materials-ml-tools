@@ -195,3 +195,82 @@ def mace_main(argv: list[str] | None = None) -> None:
     )
     table.to_csv(args.out, index=False)
     args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+
+
+def read_matgl_xyz(
+    path: str | Path, *, reference_energy_key: str, reference_forces_key: str,
+    energy_unit: str, force_unit: str,
+) -> tuple[pd.DataFrame, dict]:
+    """Read ASE extxyz with MatGL ``PESCalculator`` predictions and reference labels.
+
+    Run MatGL on reference structures using ``matgl.ext.ase.PESCalculator`` and
+    write the resulting ASE Atoms with ASE's extxyz writer. Keep the reference
+    energy in ``atoms.info[reference_energy_key]`` and Nx3 reference forces in
+    ``atoms.arrays[reference_forces_key]``. ASE stores calculator predictions
+    under its usual energy/forces keys. No MatGL import or model inference
+    occurs here; the model, split, and units remain the caller's responsibility.
+    """
+    import ase.io
+
+    energy_unit = _require_unit("energy_unit", energy_unit)
+    force_unit = _require_unit("force_unit", force_unit)
+    if not reference_energy_key or not reference_forces_key:
+        raise ValueError("reference energy and force keys are required")
+    if reference_energy_key == "energy" or reference_forces_key == "forces":
+        raise ValueError("reference keys must differ from ASE calculator output keys")
+    path = Path(path)
+    rows = []
+    frames = 0
+    for index, frame in enumerate(ase.io.iread(str(path), index=":", format="extxyz")):
+        frames += 1
+        where = f"{path.name} frame {index}"
+        if reference_energy_key not in frame.info or reference_forces_key not in frame.arrays:
+            raise ValueError(f"{where}: missing reference {reference_energy_key!r} or {reference_forces_key!r}")
+        if frame.calc is None:
+            raise ValueError(f"{where}: missing ASE calculator energy/forces results")
+        n_atoms = len(frame)
+        if n_atoms == 0:
+            raise ValueError(f"{where}: empty frame")
+        try:
+            e_true = np.asarray(frame.info[reference_energy_key], dtype=float)
+            e_pred = np.asarray(frame.get_potential_energy(), dtype=float)
+            f_true = np.asarray(frame.arrays[reference_forces_key], dtype=float)
+            f_pred = np.asarray(frame.get_forces(), dtype=float)
+        except Exception as exc:
+            raise ValueError(f"{where}: invalid reference or predicted energy/forces") from exc
+        for label, energy in ((reference_energy_key, e_true), ("energy", e_pred)):
+            if energy.shape != () or not np.isfinite(energy).all():
+                raise ValueError(f"{where}: {label} must be a finite scalar energy")
+        for label, force in ((reference_forces_key, f_true), ("forces", f_pred)):
+            if force.shape != (n_atoms, 3) or not np.isfinite(force).all():
+                raise ValueError(f"{where}: {label} must have finite shape ({n_atoms}, 3)")
+        for symbol, true, predicted in zip(frame.get_chemical_symbols(), f_true, f_pred):
+            rows.append((f"{path.stem}:{index}", symbol, n_atoms, float(e_true), float(e_pred), *true, *predicted))
+    if not rows:
+        raise ValueError(f"{path}: no frames found")
+    metadata = {
+        "source_format": "ASE extxyz with MatGL PESCalculator output",
+        "source_path": str(path), "source_sha256": _sha256(path),
+        "frames": frames, "reference_energy_key": reference_energy_key,
+        "reference_forces_key": reference_forces_key,
+        "energy_unit": energy_unit, "force_unit": force_unit,
+    }
+    return pd.DataFrame(rows, columns=COLUMNS), metadata
+
+
+def matgl_main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(description="Convert ASE/MatGL evaluated extxyz to the flat prediction table")
+    p.add_argument("xyz", type=Path)
+    p.add_argument("--reference-energy-key", required=True)
+    p.add_argument("--reference-forces-key", required=True)
+    p.add_argument("--energy-unit", required=True)
+    p.add_argument("--force-unit", required=True)
+    p.add_argument("--out", type=Path, required=True)
+    args = p.parse_args(argv)
+    table, metadata = read_matgl_xyz(
+        args.xyz, reference_energy_key=args.reference_energy_key,
+        reference_forces_key=args.reference_forces_key,
+        energy_unit=args.energy_unit, force_unit=args.force_unit,
+    )
+    table.to_csv(args.out, index=False)
+    args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
