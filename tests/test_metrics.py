@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 from materials_ml_tools.metrics import evaluate
 
@@ -36,3 +37,32 @@ def test_non_default_index_does_not_misalign_elements():
     }, index=[10, 20])
     got = evaluate(frame)
     assert got["force_component_rmse_by_element"] == {"H": 0.0, "Li": 3.0 ** .5}
+
+
+def test_repeated_structure_energy_must_agree():
+    frame = pd.read_csv("examples/predictions.csv")
+    frame.loc[1, "energy_pred"] = 9999
+    with pytest.raises(ValueError, match="repeated structure energies disagree"):
+        evaluate(frame)
+
+
+@pytest.mark.parametrize("value", [0, 1, 2.5, 999])
+def test_n_atoms_must_match_rows(value):
+    frame = pd.read_csv("examples/predictions.csv")
+    frame["n_atoms"] = frame["n_atoms"].astype(float)
+    frame.loc[0, "n_atoms"] = value
+    with pytest.raises(ValueError, match="n_atoms"):
+        evaluate(frame)
+
+
+def test_nonfinite_measurement_fails_before_json_serialization():
+    frame = pd.read_csv("examples/predictions.csv")
+    frame.loc[0, "fx_pred"] = float("inf")
+    with pytest.raises(ValueError, match="non-finite"):
+        evaluate(frame)
+
+
+def test_empty_prediction_table_fails():
+    frame = pd.read_csv("examples/predictions.csv")
+    with pytest.raises(ValueError, match="empty"):
+        evaluate(frame.iloc[:0])

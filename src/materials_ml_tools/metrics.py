@@ -10,8 +10,30 @@ REQUIRED = {"structure_id", "element", "n_atoms", "energy_true", "energy_pred", 
 def evaluate(df: pd.DataFrame) -> dict:
     missing = sorted(REQUIRED - set(df.columns))
     if missing: raise ValueError(f"missing columns: {', '.join(missing)}")
+    # A repeated structure energy is a contract, not a hint to keep the first row.
+    # Otherwise a corrupted atom row silently changes (or disappears from) the score.
+    if df.empty:
+        raise ValueError("prediction table must not be empty")
+    if df[["structure_id", "element"]].isna().any().any():
+        raise ValueError("structure_id and element must not be null")
+    numeric_columns = sorted(REQUIRED - {"structure_id", "element"})
+    try:
+        numbers = df[numeric_columns].astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("prediction table contains non-numeric measurements") from exc
+    if not np.isfinite(numbers.to_numpy()).all():
+        raise ValueError("prediction table contains non-finite measurements")
+    counts = numbers["n_atoms"]
+    if (counts < 1).any() or (counts != np.floor(counts)).any():
+        raise ValueError("n_atoms must be a positive integer")
     # groupby().groups returns index labels; positional lookups below need a clean index
     df = df.reset_index(drop=True)
+    counts = counts.reset_index(drop=True)
+    for structure_id, group in df.groupby("structure_id", sort=False):
+        if len(group) != counts.loc[group.index].iloc[0] or counts.loc[group.index].nunique() != 1:
+            raise ValueError(f"{structure_id}: n_atoms must equal the number of atom rows")
+        if group[["energy_true", "energy_pred"]].nunique().ne(1).any():
+            raise ValueError(f"{structure_id}: repeated structure energies disagree")
     structures = df.drop_duplicates("structure_id")
     energy_per_atom = (structures.energy_pred - structures.energy_true) / structures.n_atoms
     true = df[["fx_true", "fy_true", "fz_true"]].to_numpy(float)
