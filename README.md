@@ -14,7 +14,7 @@ One CSV row per atom:
 structure_id,element,n_atoms,energy_true,energy_pred,fx_true,fy_true,fz_true,fx_pred,fy_pred,fz_pred
 ```
 
-Energy is repeated for atoms in the same structure. The CLI de-duplicates structures before calculating energy metrics.
+Energy is repeated for atoms in the same structure. The CLI checks that each structure has exactly `n_atoms` rows and consistent repeated energies before calculating energy metrics. Non-finite inputs are rejected rather than silently turning into invalid scores.
 
 ```bash
 python -m materials_ml_tools.metrics examples/predictions.csv
