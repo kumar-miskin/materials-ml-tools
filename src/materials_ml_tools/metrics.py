@@ -27,9 +27,13 @@ def evaluate(df: pd.DataFrame) -> dict:
     if (counts < 1).any() or (counts != np.floor(counts)).any():
         raise ValueError("n_atoms must be a positive integer")
     # groupby().groups returns index labels; positional lookups below need a clean index
-    df = df.reset_index(drop=True)
+    df = df.reset_index(drop=True).copy()
+    # Use the validated numeric values, not the original object/string columns.
+    # Keep caller input untouched; numeric strings are accepted by validation.
+    for column in numeric_columns:
+        df[column] = numbers[column].to_numpy()
     counts = counts.reset_index(drop=True)
-    for structure_id, group in df.groupby("structure_id", sort=False):
+    for structure_id, group in df.groupby("structure_id", sort=False, observed=True):
         if len(group) != counts.loc[group.index].iloc[0] or counts.loc[group.index].nunique() != 1:
             raise ValueError(f"{structure_id}: n_atoms must equal the number of atom rows")
         if group[["energy_true", "energy_pred"]].nunique().ne(1).any():
@@ -40,7 +44,7 @@ def evaluate(df: pd.DataFrame) -> dict:
     pred = df[["fx_pred", "fy_pred", "fz_pred"]].to_numpy(float)
     error = pred - true
     per_element = {}
-    for element, rows in df.groupby("element").groups.items():
+    for element, rows in df.groupby("element", observed=True).groups.items():
         e = error[list(rows)]
         per_element[str(element)] = float(np.sqrt(np.mean(e**2)))
     return {

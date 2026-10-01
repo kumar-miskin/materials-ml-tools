@@ -66,3 +66,33 @@ def test_empty_prediction_table_fails():
     frame = pd.read_csv("examples/predictions.csv")
     with pytest.raises(ValueError, match="empty"):
         evaluate(frame.iloc[:0])
+
+
+def test_numeric_strings_use_validated_values_without_changing_input():
+    frame = pd.read_csv("examples/predictions.csv")
+    expected = evaluate(frame)
+    numeric = frame.columns.difference(["structure_id", "element"])
+    frame[numeric] = frame[numeric].astype(str)
+    original = frame.copy(deep=True)
+    assert evaluate(frame) == expected
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_unused_categorical_structure_and_element_are_not_samples():
+    frame = pd.read_csv("examples/predictions.csv")
+    expected = evaluate(frame)
+    for column in ("structure_id", "element"):
+        frame[column] = pd.Categorical(
+            frame[column], categories=[*frame[column].unique(), "unused"]
+        )
+    original = frame.copy(deep=True)
+    assert evaluate(frame) == expected
+    assert "unused" not in evaluate(frame)["force_component_rmse_by_element"]
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_numeric_strings_cannot_hide_disagreeing_energy():
+    frame = pd.read_csv("examples/predictions.csv").astype(str)
+    frame.loc[1, "energy_pred"] = "999"
+    with pytest.raises(ValueError, match="repeated structure energies disagree"):
+        evaluate(frame)
