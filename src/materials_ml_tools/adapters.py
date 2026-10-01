@@ -80,7 +80,14 @@ def read_nequip_xyz(path: str | Path, *, energy_unit: str, force_unit: str) -> t
         n_atoms = len(frame)
         if forces_true.shape != (n_atoms, 3) or forces_pred.shape != (n_atoms, 3):
             raise ValueError(f"{where}: force arrays must have shape ({n_atoms}, 3)")
-        energy_true = float(frame.info[REF_ENERGY])
+        energy_true_value = np.asarray(frame.info[REF_ENERGY], dtype=float)
+        if energy_true_value.shape != () or not np.isfinite(energy_true_value).all():
+            raise ValueError(f"{where}: reference energy must be a finite scalar")
+        energy_true = float(energy_true_value)
+        if not np.isfinite(energy_pred):
+            raise ValueError(f"{where}: predicted energy must be finite")
+        if not np.isfinite(forces_true).all() or not np.isfinite(forces_pred).all():
+            raise ValueError(f"{where}: reference and predicted forces must be finite")
         structure_id = f"{path.stem}:{index}"
         for symbol, f_true, f_pred in zip(frame.get_chemical_symbols(), forces_true, forces_pred):
             rows.append((structure_id, symbol, n_atoms, energy_true, energy_pred, *f_true, *f_pred))

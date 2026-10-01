@@ -58,3 +58,19 @@ def test_cli_writes_csv_and_metadata(tmp_path):
     assert out.read_text().splitlines()[0] == ",".join(COLUMNS)
     meta = json.loads((tmp_path / "predictions.csv.meta.json").read_text())
     assert meta["source_format"] == "nequip.train.callbacks.TestTimeXYZFileWriter"
+
+
+@pytest.mark.parametrize('field', ['original_dataset_energy', 'energy', 'original_dataset_forces', 'forces'])
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -float('inf')])
+def test_nequip_rejects_nonfinite_fields(tmp_path, field, bad):
+    import ase.io
+    frames=list(ase.io.iread(FIXTURE, index=':', format='extxyz'))
+    frame=frames[0]
+    if field=='original_dataset_energy': frame.info[field]=bad
+    elif field=='energy': frame.calc.results[field]=bad
+    elif field=='original_dataset_forces': frame.arrays[field][0,0]=bad
+    else: frame.calc.results[field][0,0]=bad
+    path=tmp_path/'invalid.xyz'
+    ase.io.write(path,frames,format='extxyz')
+    with pytest.raises(ValueError,match='finite'):
+        read_nequip_xyz(path,energy_unit='eV',force_unit='eV/Angstrom')
