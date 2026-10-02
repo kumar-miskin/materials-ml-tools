@@ -1,0 +1,3 @@
+[console_scripts]
+materials-ml-mace-xyz = materials_ml_tools.adapters:mace_main
+materials-ml-matgl-xyz = materials_ml_tools.adapters:matgl_main

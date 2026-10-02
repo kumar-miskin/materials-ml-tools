@@ -96,3 +96,26 @@ def test_numeric_strings_cannot_hide_disagreeing_energy():
     frame.loc[1, "energy_pred"] = "999"
     with pytest.raises(ValueError, match="repeated structure energies disagree"):
         evaluate(frame)
+
+
+def test_energy_rmse_and_force_mae_conventions():
+    frame=pd.DataFrame({
+        'structure_id':['a','a','b'],'element':['H','H','Li'],'n_atoms':[2,2,1],
+        'energy_true':[0.,0.,0.],'energy_pred':[2.,2.,3.],
+        'fx_true':[0.,0.,0.],'fy_true':[0.,0.,0.],'fz_true':[0.,0.,0.],
+        'fx_pred':[3.,0.,0.],'fy_pred':[0.,4.,0.],'fz_pred':[0.,0.,2.],
+    })
+    got=evaluate(frame)
+    # Energies use equal structure weighting: errors per atom 1 and 3.
+    assert got['energy_rmse_per_atom']==pytest.approx(5**.5)
+    assert got['force_component_mae']==pytest.approx(9/9)
+    # No fixed conversion between component MAE and vector MAE.
+    assert got['force_vector_mae']==pytest.approx(3)
+
+
+def test_new_metrics_are_zero_for_exact_predictions():
+    frame=pd.read_csv('examples/predictions.csv')
+    for key in ('energy','fx','fy','fz'):frame[key+'_pred']=frame[key+'_true']
+    got=evaluate(frame)
+    assert got['energy_rmse_per_atom']==0
+    assert got['force_component_mae']==0

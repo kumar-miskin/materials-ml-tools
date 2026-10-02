@@ -1,0 +1,9 @@
+pandas>=2.2
+numpy>=1.26
+
+[dev]
+pytest>=8
+ase>=3.23
+
+[nequip]
+ase>=3.23
