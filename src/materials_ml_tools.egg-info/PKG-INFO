@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: materials-ml-tools
+Version: 0.2.0
+Summary: Model-agnostic evaluation utilities for machine-learning interatomic potentials
+Requires-Python: >=3.10
+Requires-Dist: pandas>=2.2
+Requires-Dist: numpy>=1.26
+Provides-Extra: nequip
+Requires-Dist: ase>=3.23; extra == "nequip"
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: ase>=3.23; extra == "dev"
