@@ -51,6 +51,8 @@ def evaluate(df: pd.DataFrame) -> dict:
         "structures": int(len(structures)),
         "atoms": int(len(df)),
         "energy_mae_per_atom": float(np.mean(np.abs(energy_per_atom))),
+        "energy_rmse_per_atom": float(np.sqrt(np.mean(energy_per_atom**2))),
+        "force_component_mae": float(np.mean(np.abs(error))),
         "force_component_rmse": float(np.sqrt(np.mean(error**2))),
         "force_vector_mae": float(np.mean(np.linalg.norm(error, axis=1))),
         "force_vector_rmse": float(np.sqrt(np.mean(np.sum(error**2, axis=1)))),

@@ -134,3 +134,13 @@ substituting predictions for labels. It records source SHA-256, frame count,
 reference key names and declared units. Validate the model's predicted units
 against the dataset's units; a CSV does not prove reference methods, model
 provenance, sample independence or a fair cross-model comparison.
+
+### Additional explicit error conventions
+
+The report also includes `energy_rmse_per_atom`, the square root of the mean
+squared per-atom energy error across structures (equal structure weighting),
+and `force_component_mae`, the mean absolute error across all 3N Cartesian
+force components. Energy RMSE gives more weight to large errors than energy
+MAE; neither changes units. Component force MAE is not vector-magnitude MAE
+and there is no universal factor relating them. Existing fields are unchanged;
+consumers enforcing an exact output-key schema must allow these added keys.
