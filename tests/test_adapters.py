@@ -74,3 +74,21 @@ def test_nequip_rejects_nonfinite_fields(tmp_path, field, bad):
     ase.io.write(path,frames,format='extxyz')
     with pytest.raises(ValueError,match='finite'):
         read_nequip_xyz(path,energy_unit='eV',force_unit='eV/Angstrom')
+
+
+def test_empty_nequip_frame_is_not_silently_dropped(tmp_path):
+    import numpy as np
+    import ase.io
+    from ase import Atoms
+    from ase.calculators.singlepoint import SinglePointCalculator
+    frames=[]
+    for symbol in ('H',''):
+        atoms=Atoms(symbol)
+        atoms.info['original_dataset_energy']=0.
+        atoms.arrays['original_dataset_forces']=np.zeros((len(atoms),3))
+        atoms.calc=SinglePointCalculator(atoms,energy=0.,forces=np.zeros((len(atoms),3)))
+        frames.append(atoms)
+    path=tmp_path/'empty_frame.xyz'
+    ase.io.write(path,frames,format='extxyz')
+    with pytest.raises(ValueError,match='frame 1: empty frame'):
+        read_nequip_xyz(path,energy_unit='eV',force_unit='eV/Angstrom')

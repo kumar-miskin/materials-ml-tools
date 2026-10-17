@@ -78,6 +78,8 @@ def read_nequip_xyz(path: str | Path, *, energy_unit: str, force_unit: str) -> t
             raise ValueError(f"{where}: no predicted energy/forces found") from exc
         forces_true = np.asarray(frame.arrays[REF_FORCES], dtype=float)
         n_atoms = len(frame)
+        if n_atoms == 0:
+            raise ValueError(f"{where}: empty frame")
         if forces_true.shape != (n_atoms, 3) or forces_pred.shape != (n_atoms, 3):
             raise ValueError(f"{where}: force arrays must have shape ({n_atoms}, 3)")
         energy_true_value = np.asarray(frame.info[REF_ENERGY], dtype=float)
