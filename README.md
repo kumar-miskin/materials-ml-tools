@@ -135,6 +135,19 @@ reference key names and declared units. Validate the model's predicted units
 against the dataset's units; a CSV does not prove reference methods, model
 provenance, sample independence or a fair cross-model comparison.
 
+### Per-structure breakdown
+
+Aggregate scores weight every structure equally, which can hide a few bad
+predictions behind many good ones. `per_structure` (also
+`python -m materials_ml_tools.metrics predictions.csv --per-structure out.csv`)
+returns one row per structure: `energy_error`, `energy_error_per_atom`,
+`force_component_rmse` and `force_vector_rmse` for that structure alone, plus
+`n_atoms` and an alphabetical `composition` summary (`H1 Li1` style; unused
+categorical levels are not observations). Structure IDs keep the
+`<file stem>:<frame index>` form the adapters assign, so each row joins back
+to the source XYZ frame. The breakdown uses the same validation contract as
+the aggregate report; it changes no aggregate values.
+
 ### Additional explicit error conventions
 
 The report also includes `energy_rmse_per_atom`, the square root of the mean

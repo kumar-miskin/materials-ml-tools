@@ -119,3 +119,56 @@ def test_new_metrics_are_zero_for_exact_predictions():
     got=evaluate(frame)
     assert got['energy_rmse_per_atom']==0
     assert got['force_component_mae']==0
+
+
+def test_per_structure_breakdown_values():
+    from materials_ml_tools.metrics import per_structure
+    frame = pd.DataFrame({
+        "structure_id": ["a", "a", "b"], "element": ["Li", "H", "H"], "n_atoms": [2, 2, 1],
+        "energy_true": [10., 10., 3.], "energy_pred": [12., 12., 4.],
+        "fx_true": [0., 0., 0.], "fy_true": [0., 0., 0.], "fz_true": [0., 0., 0.],
+        "fx_pred": [1., 0., .3], "fy_pred": [0., 2., -.4], "fz_pred": [0., 0., 1.2],
+    })
+    got = per_structure(frame)
+    assert list(got["structure_id"]) == ["a", "b"]
+    a, b = got.iloc[0], got.iloc[1]
+    assert a["n_atoms"] == 2 and a["composition"] == "H1 Li1"
+    assert a["energy_error"] == 2.0 and a["energy_error_per_atom"] == 1.0
+    assert a["force_component_rmse"] == pytest.approx((5 / 6) ** .5)
+    assert a["force_vector_rmse"] == pytest.approx((5 / 2) ** .5)
+    assert b["n_atoms"] == 1 and b["composition"] == "H1"
+    assert b["energy_error"] == 1.0 and b["energy_error_per_atom"] == 1.0
+    assert b["force_component_rmse"] == pytest.approx(((0.09 + 0.16 + 1.44) / 3) ** .5)
+    assert b["force_vector_rmse"] == pytest.approx((0.09 + 0.16 + 1.44) ** .5)
+
+
+def test_per_structure_uses_the_same_validation_contract():
+    from materials_ml_tools.metrics import per_structure
+    frame = pd.read_csv("examples/predictions.csv")
+    with pytest.raises(ValueError, match="empty"):
+        per_structure(frame.iloc[:0])
+    frame.loc[1, "energy_pred"] = 9999
+    with pytest.raises(ValueError, match="repeated structure energies disagree"):
+        per_structure(frame)
+
+
+def test_per_structure_excludes_unused_categorical_elements():
+    from materials_ml_tools.metrics import per_structure
+    frame = pd.read_csv("examples/predictions.csv")
+    frame["element"] = pd.Categorical(frame["element"], categories=[*frame["element"].unique(), "Xx"])
+    got = per_structure(frame)
+    assert all("Xx" not in composition for composition in got["composition"])
+
+
+def test_per_structure_cli_writes_breakdown(tmp_path):
+    from materials_ml_tools.metrics import main
+    out = tmp_path / "per_structure.csv"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("sys.argv", ["metrics", "examples/predictions.csv", "--per-structure", str(out)])
+        main()
+    written = pd.read_csv(out)
+    assert list(written.columns) == [
+        "structure_id", "n_atoms", "composition", "energy_true", "energy_pred",
+        "energy_error", "energy_error_per_atom", "force_component_rmse", "force_vector_rmse",
+    ]
+    assert len(written) == pd.read_csv("examples/predictions.csv")["structure_id"].nunique()
