@@ -7,7 +7,13 @@ import pandas as pd
 REQUIRED = {"structure_id", "element", "n_atoms", "energy_true", "energy_pred", *(f"f{a}_{k}" for a in "xyz" for k in ("true", "pred"))}
 
 
-def evaluate(df: pd.DataFrame) -> dict:
+def _validated(df: pd.DataFrame) -> pd.DataFrame:
+    """Check the prediction-table contract and return a cleaned copy.
+
+    The caller's frame is never mutated. The returned frame has a fresh
+    positional index and float-valued numeric columns, so downstream groupby
+    and positional lookups behave identically for any input index or dtype.
+    """
     missing = sorted(REQUIRED - set(df.columns))
     if missing: raise ValueError(f"missing columns: {', '.join(missing)}")
     # A repeated structure energy is a contract, not a hint to keep the first row.
@@ -38,6 +44,11 @@ def evaluate(df: pd.DataFrame) -> dict:
             raise ValueError(f"{structure_id}: n_atoms must equal the number of atom rows")
         if group[["energy_true", "energy_pred"]].nunique().ne(1).any():
             raise ValueError(f"{structure_id}: repeated structure energies disagree")
+    return df
+
+
+def evaluate(df: pd.DataFrame) -> dict:
+    df = _validated(df)
     structures = df.drop_duplicates("structure_id")
     energy_per_atom = (structures.energy_pred - structures.energy_true) / structures.n_atoms
     true = df[["fx_true", "fy_true", "fz_true"]].to_numpy(float)
@@ -60,12 +71,58 @@ def evaluate(df: pd.DataFrame) -> dict:
     }
 
 
+def per_structure(df: pd.DataFrame) -> pd.DataFrame:
+    """Per-structure error breakdown for locating outlier structures.
+
+    One row per structure: the repeated structure energy (validated to agree
+    on every atom row), its error, the error per atom, and the structure's
+    force component and vector RMSE. ``composition`` lists observed element
+    counts alphabetically as ``<symbol><count>`` separated by spaces (unused
+    categorical levels are not observations and are excluded). Structure IDs
+    keep the ``<file stem>:<frame index>`` form the adapters assign, so rows
+    join back to the source XYZ frames. Aggregate scores weight every
+    structure equally; this table is where that weighting is inspected, not
+    changed.
+    """
+    df = _validated(df)
+    error = df[["fx_pred", "fy_pred", "fz_pred"]].to_numpy(float) - df[
+        ["fx_true", "fy_true", "fz_true"]].to_numpy(float)
+    rows = []
+    for structure_id, group in df.groupby("structure_id", sort=False, observed=True):
+        e = error[group.index]
+        n_atoms = int(group["n_atoms"].iloc[0])
+        energy_true = float(group["energy_true"].iloc[0])
+        energy_pred = float(group["energy_pred"].iloc[0])
+        observed = group["element"].value_counts()
+        composition = " ".join(
+            f"{element}{count}" for element, count in sorted(observed[observed > 0].items())
+        )
+        rows.append({
+            "structure_id": structure_id,
+            "n_atoms": n_atoms,
+            "composition": composition,
+            "energy_true": energy_true,
+            "energy_pred": energy_pred,
+            "energy_error": energy_pred - energy_true,
+            "energy_error_per_atom": (energy_pred - energy_true) / n_atoms,
+            "force_component_rmse": float(np.sqrt(np.mean(e**2))),
+            "force_vector_rmse": float(np.sqrt(np.mean(np.sum(e**2, axis=1)))),
+        })
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Calculate explicit MLIP error conventions")
     p.add_argument("csv", type=Path); p.add_argument("--out", type=Path)
-    args = p.parse_args(); result = evaluate(pd.read_csv(args.csv))
+    p.add_argument("--per-structure", type=Path, dest="per_structure",
+                   help="also write the per-structure error breakdown to this CSV path")
+    args = p.parse_args()
+    table = pd.read_csv(args.csv)
+    result = evaluate(table)
     text = json.dumps(result, indent=2, sort_keys=True)
     if args.out: args.out.write_text(text + "\n")
     else: print(text)
+    if args.per_structure:
+        per_structure(table).to_csv(args.per_structure, index=False)
 
 if __name__ == "__main__": main()
