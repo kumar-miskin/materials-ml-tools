@@ -80,9 +80,11 @@ def per_structure(df: pd.DataFrame) -> pd.DataFrame:
     counts alphabetically as ``<symbol><count>`` separated by spaces (unused
     categorical levels are not observations and are excluded). Structure IDs
     keep the ``<file stem>:<frame index>`` form the adapters assign, so rows
-    join back to the source XYZ frames. Aggregate scores weight every
-    structure equally; this table is where that weighting is inspected, not
-    changed.
+    join back to the source XYZ frames. The aggregate energy scores average
+    per-structure errors (equal weight per structure), while the aggregate
+    force scores pool all 3N Cartesian components across atoms, so larger
+    structures contribute more force components. This table is where both
+    weightings are inspected, not changed.
     """
     df = _validated(df)
     error = df[["fx_pred", "fy_pred", "fz_pred"]].to_numpy(float) - df[

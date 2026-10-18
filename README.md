@@ -137,8 +137,10 @@ provenance, sample independence or a fair cross-model comparison.
 
 ### Per-structure breakdown
 
-Aggregate scores weight every structure equally, which can hide a few bad
-predictions behind many good ones. `per_structure` (also
+Energy scores average per-structure errors across structures (equal weight
+per structure), while force scores pool all 3N Cartesian components across
+atoms, so larger structures contribute more force components; both can hide
+a few bad structures behind many good ones. `per_structure` (also
 `python -m materials_ml_tools.metrics predictions.csv --per-structure out.csv`)
 returns one row per structure: `energy_error`, `energy_error_per_atom`,
 `force_component_rmse` and `force_vector_rmse` for that structure alone, plus
