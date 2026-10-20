@@ -47,6 +47,15 @@ def _validated(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _rms(values: np.ndarray) -> float:
+    """Root mean square without squaring unscaled floating-point values."""
+    values = np.asarray(values, dtype=float)
+    scale = float(np.max(np.abs(values)))
+    if scale == 0:
+        return 0.0
+    return float(scale * np.sqrt(np.mean((values / scale) ** 2)))
+
+
 def evaluate(df: pd.DataFrame) -> dict:
     df = _validated(df)
     structures = df.drop_duplicates("structure_id")
@@ -57,16 +66,16 @@ def evaluate(df: pd.DataFrame) -> dict:
     per_element = {}
     for element, rows in df.groupby("element", observed=True).groups.items():
         e = error[list(rows)]
-        per_element[str(element)] = float(np.sqrt(np.mean(e**2)))
+        per_element[str(element)] = _rms(e)
     return {
         "structures": int(len(structures)),
         "atoms": int(len(df)),
         "energy_mae_per_atom": float(np.mean(np.abs(energy_per_atom))),
-        "energy_rmse_per_atom": float(np.sqrt(np.mean(energy_per_atom**2))),
+        "energy_rmse_per_atom": _rms(energy_per_atom.to_numpy()),
         "force_component_mae": float(np.mean(np.abs(error))),
-        "force_component_rmse": float(np.sqrt(np.mean(error**2))),
-        "force_vector_mae": float(np.mean(np.linalg.norm(error, axis=1))),
-        "force_vector_rmse": float(np.sqrt(np.mean(np.sum(error**2, axis=1)))),
+        "force_component_rmse": _rms(error),
+        "force_vector_mae": float(np.mean(np.hypot.reduce(error, axis=1))),
+        "force_vector_rmse": float(np.sqrt(3) * _rms(error)),
         "force_component_rmse_by_element": per_element,
     }
 
@@ -107,8 +116,8 @@ def per_structure(df: pd.DataFrame) -> pd.DataFrame:
             "energy_pred": energy_pred,
             "energy_error": energy_pred - energy_true,
             "energy_error_per_atom": (energy_pred - energy_true) / n_atoms,
-            "force_component_rmse": float(np.sqrt(np.mean(e**2))),
-            "force_vector_rmse": float(np.sqrt(np.mean(np.sum(e**2, axis=1)))),
+            "force_component_rmse": _rms(e),
+            "force_vector_rmse": float(np.sqrt(3) * _rms(e)),
         })
     return pd.DataFrame(rows)
 
