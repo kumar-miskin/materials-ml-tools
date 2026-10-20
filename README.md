@@ -32,6 +32,8 @@ For structure s with N_s atoms and force error e_i = F_pred,i - F_true,i on atom
 | `force_vector_rmse` | sqrt( sum_i \|\|e_i\|\|^2 / N ) | atoms |
 | `force_component_rmse_by_element` | component RMSE restricted to atoms of each element | components, per element |
 
+RMSE calculations scale residuals before squaring, and per-atom vector norms use `hypot`, so representable errors such as `1e200` and `1e-200` do not become infinity or zero solely through intermediate squaring. This does not repair non-finite inputs or residuals that themselves exceed floating-point range. Metric definitions and weighting are unchanged.
+
 `force_vector_rmse` is always sqrt(3) times `force_component_rmse` for the same errors, because the numerator is identical and only the denominator changes (N vs 3N). There is no fixed conversion between component MAE and vector MAE, so an MAE should never be compared across papers or codes without knowing which one it is. NequIP's `misc/parity_plot.py`, for example, flattens the Nx3 force array before averaging, so its force MAE/RMSE are component-wise.
 
 ## NequIP adapter

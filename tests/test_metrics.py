@@ -172,3 +172,37 @@ def test_per_structure_cli_writes_breakdown(tmp_path):
         "energy_error", "energy_error_per_atom", "force_component_rmse", "force_vector_rmse",
     ]
     assert len(written) == pd.read_csv("examples/predictions.csv")["structure_id"].nunique()
+
+
+@pytest.mark.parametrize("magnitude", [1e200, 1e-200])
+@pytest.mark.parametrize("breakdown", [False, True])
+def test_finite_extreme_errors_do_not_overflow_or_underflow(magnitude, breakdown):
+    """Squaring first loses finite, representable norms at either float extreme."""
+    from materials_ml_tools.metrics import per_structure
+    frame = pd.DataFrame({
+        "structure_id": ["a"], "element": ["H"], "n_atoms": [1],
+        "energy_true": [0.], "energy_pred": [magnitude],
+        **{f"f{axis}_true": [0.] for axis in "xyz"},
+        **{f"f{axis}_pred": [magnitude] for axis in "xyz"},
+    })
+    original = frame.copy(deep=True)
+    if breakdown:
+        got = per_structure(frame).iloc[0]
+    else:
+        got = evaluate(frame)
+        assert got["energy_rmse_per_atom"] == pytest.approx(magnitude, abs=0)
+        assert got["force_vector_mae"] == pytest.approx(3 ** .5 * magnitude, abs=0)
+        assert got["force_component_rmse_by_element"]["H"] == pytest.approx(magnitude, abs=0)
+    assert got["force_component_rmse"] == pytest.approx(magnitude, abs=0)
+    assert got["force_vector_rmse"] == pytest.approx(3 ** .5 * magnitude, abs=0)
+    pd.testing.assert_frame_equal(frame, original)
+
+
+@pytest.mark.parametrize("magnitude", [1e200, 1e-200])
+def test_scaled_rms_preserves_mixed_signs_and_zero_components(magnitude):
+    from materials_ml_tools.metrics import _rms
+    import numpy as np
+    assert _rms(np.array([magnitude, -magnitude, 0.])) == pytest.approx(
+        magnitude * (2 / 3) ** .5, abs=0
+    )
+    assert _rms(np.zeros((2, 3))) == 0.
