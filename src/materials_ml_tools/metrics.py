@@ -128,6 +128,19 @@ def main() -> None:
     p.add_argument("--per-structure", type=Path, dest="per_structure",
                    help="also write the per-structure error breakdown to this CSV path")
     args = p.parse_args()
+    # Check all paths before reading or writing: otherwise a valid invocation
+    # can destroy its source CSV or silently replace one output with another.
+    paths = [("input CSV", args.csv)]
+    if args.out:
+        paths.append(("JSON output", args.out))
+    if args.per_structure:
+        paths.append(("per-structure output", args.per_structure))
+    for i, (label, path) in enumerate(paths):
+        for other_label, other in paths[:i]:
+            if path.resolve() == other.resolve() or (
+                path.exists() and other.exists() and path.samefile(other)
+            ):
+                p.error(f"{label} and {other_label} must be different files")
     table = pd.read_csv(args.csv)
     result = evaluate(table)
     text = json.dumps(result, indent=2, sort_keys=True)

@@ -1,3 +1,4 @@
+from pathlib import Path
 import pytest
 import pandas as pd
 from materials_ml_tools.metrics import evaluate
@@ -206,3 +207,56 @@ def test_scaled_rms_preserves_mixed_signs_and_zero_components(magnitude):
         magnitude * (2 / 3) ** .5, abs=0
     )
     assert _rms(np.zeros((2, 3))) == 0.
+
+
+@pytest.mark.parametrize("collision", ["input-json", "input-csv", "outputs"])
+def test_metrics_cli_rejects_path_collisions_before_writing(tmp_path, monkeypatch, collision):
+    from materials_ml_tools.metrics import main
+    source = tmp_path / "predictions.csv"
+    source.write_bytes(Path("examples/predictions.csv").read_bytes())
+    original = source.read_bytes()
+    out, breakdown = tmp_path / "metrics.json", tmp_path / "breakdown.csv"
+    if collision == "input-json":
+        out = source
+    elif collision == "input-csv":
+        breakdown = source
+    else:
+        breakdown = out
+    monkeypatch.setattr("sys.argv", ["metrics", str(source), "--out", str(out),
+                                     "--per-structure", str(breakdown)])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 2
+    assert source.read_bytes() == original
+    assert not (tmp_path / "metrics.json").exists()
+    assert not (tmp_path / "breakdown.csv").exists()
+
+
+@pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
+def test_metrics_cli_rejects_filesystem_alias_of_input(tmp_path, monkeypatch, alias_kind):
+    import os
+    from materials_ml_tools.metrics import main
+    source = tmp_path / "predictions.csv"
+    source.write_bytes(Path("examples/predictions.csv").read_bytes())
+    original = source.read_bytes()
+    alias = tmp_path / "alias.json"
+    if alias_kind == "symlink":
+        alias.symlink_to(source)
+    else:
+        os.link(source, alias)
+    monkeypatch.setattr("sys.argv", ["metrics", str(source), "--out", str(alias)])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 2
+    assert source.read_bytes() == alias.read_bytes() == original
+
+
+def test_metrics_cli_writes_distinct_json_and_csv_outputs(tmp_path, monkeypatch):
+    import json
+    from materials_ml_tools.metrics import main
+    out, breakdown = tmp_path / "metrics.json", tmp_path / "breakdown.csv"
+    monkeypatch.setattr("sys.argv", ["metrics", "examples/predictions.csv", "--out", str(out),
+                                     "--per-structure", str(breakdown)])
+    main()
+    assert json.loads(out.read_text())["atoms"] == 2
+    assert list(pd.read_csv(breakdown)["structure_id"]) == ["example-1"]
