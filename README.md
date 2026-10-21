@@ -20,6 +20,8 @@ Energy is repeated for atoms in the same structure. The CLI checks that each str
 python -m materials_ml_tools.metrics examples/predictions.csv
 ```
 
+The metrics CLI rejects input/output path collisions before writing anything, including symlink and hardlink aliases of an existing file. `--out` and `--per-structure` must name separate files, neither of which can be the input CSV. Existing distinct output files can still be replaced.
+
 ## Output conventions
 
 For structure s with N_s atoms and force error e_i = F_pred,i - F_true,i on atom i (N atoms in total):
