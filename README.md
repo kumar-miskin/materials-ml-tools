@@ -163,3 +163,13 @@ force components. Energy RMSE gives more weight to large errors than energy
 MAE; neither changes units. Component force MAE is not vector-magnitude MAE
 and there is no universal factor relating them. Existing fields are unchanged;
 consumers enforcing an exact output-key schema must allow these added keys.
+
+### Conversion output safety
+
+All three XYZ conversion CLIs check the source XYZ, output CSV and generated
+`<out>.meta.json` sidecar before parsing or writing. They reject collisions,
+including resolved paths and existing symlink/hardlink aliases. This prevents
+accidentally replacing the source dataset with the CSV or metadata, and prevents
+the metadata from replacing the CSV. Existing distinct output files can still
+be replaced. These checks are not transactional writes or protection against
+another process changing links between the check and the write.

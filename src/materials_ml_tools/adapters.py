@@ -107,6 +107,19 @@ def read_nequip_xyz(path: str | Path, *, energy_unit: str, force_unit: str) -> t
     return frame_table, metadata
 
 
+def _conversion_paths(parser: argparse.ArgumentParser, source: Path, output: Path) -> Path:
+    """Validate every destination before input parsing or any output writes."""
+    metadata = output.with_suffix(output.suffix + ".meta.json")
+    paths = [("input XYZ", source), ("CSV output", output), ("metadata output", metadata)]
+    for i, (label, path) in enumerate(paths):
+        for other_label, other in paths[:i]:
+            if path.resolve() == other.resolve() or (
+                path.exists() and other.exists() and path.samefile(other)
+            ):
+                parser.error(f"{label} and {other_label} must be different files")
+    return metadata
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Convert NequIP test-time XYZ output to the flat prediction table")
     p.add_argument("xyz", type=Path)
@@ -114,9 +127,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--force-unit", required=True, help="e.g. eV/Angstrom; must match the training data")
     p.add_argument("--out", type=Path, required=True, help="CSV path; metadata is written to <out>.meta.json")
     args = p.parse_args(argv)
+    metadata_path = _conversion_paths(p, args.xyz, args.out)
     table, metadata = read_nequip_xyz(args.xyz, energy_unit=args.energy_unit, force_unit=args.force_unit)
     table.to_csv(args.out, index=False)
-    args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":
@@ -197,13 +211,14 @@ def mace_main(argv: list[str] | None = None) -> None:
     p.add_argument("--force-unit", required=True)
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args(argv)
+    metadata_path = _conversion_paths(p, args.xyz, args.out)
     table, metadata = read_mace_xyz(
         args.xyz, energy_key=args.energy_key, forces_key=args.forces_key,
         prediction_prefix=args.prediction_prefix,
         energy_unit=args.energy_unit, force_unit=args.force_unit,
     )
     table.to_csv(args.out, index=False)
-    args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
 
 
 def read_matgl_xyz(
@@ -276,10 +291,11 @@ def matgl_main(argv: list[str] | None = None) -> None:
     p.add_argument("--force-unit", required=True)
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args(argv)
+    metadata_path = _conversion_paths(p, args.xyz, args.out)
     table, metadata = read_matgl_xyz(
         args.xyz, reference_energy_key=args.reference_energy_key,
         reference_forces_key=args.reference_forces_key,
         energy_unit=args.energy_unit, force_unit=args.force_unit,
     )
     table.to_csv(args.out, index=False)
-    args.out.with_suffix(args.out.suffix + ".meta.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
