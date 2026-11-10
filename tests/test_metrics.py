@@ -275,10 +275,10 @@ def test_finite_mae_does_not_overflow_when_summing_large_errors(value):
     original = frame.copy(deep=True)
     with np.errstate(over='raise', invalid='raise'):
         got = evaluate(frame)
-    assert got['energy_mae_per_atom'] == pytest.approx(abs(value))
-    assert got['force_component_mae'] == pytest.approx(abs(value))
-    assert got['force_vector_mae'] == pytest.approx(3 ** .5 * abs(value))
-    assert got['force_vector_rmse'] == pytest.approx(3 ** .5 * abs(value))
+    assert got['energy_mae_per_atom'] / abs(value) == pytest.approx(1.)
+    assert got['force_component_mae'] / abs(value) == pytest.approx(1.)
+    assert got['force_vector_mae'] / abs(value) == pytest.approx(3 ** .5)
+    assert got['force_vector_rmse'] / abs(value) == pytest.approx(3 ** .5)
     assert np.isfinite(per_structure(frame).select_dtypes('number').to_numpy()).all()
     pd.testing.assert_frame_equal(frame, original)
 
@@ -295,9 +295,9 @@ def test_stable_mae_preserves_structure_and_component_weighting(magnitude):
     })
     with np.errstate(over='raise', invalid='raise'):
         got = evaluate(frame)
-    assert got['energy_mae_per_atom'] == pytest.approx(.75 * magnitude, abs=0)
-    assert got['force_component_mae'] == pytest.approx(magnitude / 3, abs=0)
-    assert got['force_vector_mae'] == pytest.approx((1 + 2 ** .5) / 3 * magnitude, abs=0)
+    assert got['energy_mae_per_atom'] / magnitude == pytest.approx(.75)
+    assert got['force_component_mae'] / magnitude == pytest.approx(1 / 3)
+    assert got['force_vector_mae'] / magnitude == pytest.approx((1 + 2 ** .5) / 3)
 
 
 def test_stable_mae_is_zero_for_zero_errors():
