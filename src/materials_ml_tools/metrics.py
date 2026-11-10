@@ -56,6 +56,15 @@ def _rms(values: np.ndarray) -> float:
     return float(scale * np.sqrt(np.mean((values / scale) ** 2)))
 
 
+def _mean_abs(values: np.ndarray) -> float:
+    """Mean absolute value without overflowing a representable mean's sum."""
+    values = np.abs(np.asarray(values, dtype=float))
+    scale = float(np.max(values))
+    if scale == 0:
+        return 0.0
+    return float(scale * np.mean(values / scale))
+
+
 def evaluate(df: pd.DataFrame) -> dict:
     df = _validated(df)
     structures = df.drop_duplicates("structure_id")
@@ -70,11 +79,11 @@ def evaluate(df: pd.DataFrame) -> dict:
     return {
         "structures": int(len(structures)),
         "atoms": int(len(df)),
-        "energy_mae_per_atom": float(np.mean(np.abs(energy_per_atom))),
+        "energy_mae_per_atom": _mean_abs(energy_per_atom.to_numpy()),
         "energy_rmse_per_atom": _rms(energy_per_atom.to_numpy()),
-        "force_component_mae": float(np.mean(np.abs(error))),
+        "force_component_mae": _mean_abs(error),
         "force_component_rmse": _rms(error),
-        "force_vector_mae": float(np.mean(np.hypot.reduce(error, axis=1))),
+        "force_vector_mae": _mean_abs(np.hypot.reduce(error, axis=1)),
         "force_vector_rmse": float(np.sqrt(3) * _rms(error)),
         "force_component_rmse_by_element": per_element,
     }
