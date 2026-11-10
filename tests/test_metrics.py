@@ -260,3 +260,50 @@ def test_metrics_cli_writes_distinct_json_and_csv_outputs(tmp_path, monkeypatch)
     main()
     assert json.loads(out.read_text())["atoms"] == 2
     assert list(pd.read_csv(breakdown)["structure_id"]) == ["example-1"]
+
+
+@pytest.mark.parametrize('value', [1e308, -1e308])
+def test_finite_mae_does_not_overflow_when_summing_large_errors(value):
+    import numpy as np
+    from materials_ml_tools.metrics import per_structure
+    frame = pd.DataFrame({
+        'structure_id': ['a', 'b'], 'element': ['H', 'Li'], 'n_atoms': [1, 1],
+        'energy_true': [0., 0.], 'energy_pred': [value, value],
+        **{f'f{axis}_true': [0., 0.] for axis in 'xyz'},
+        **{f'f{axis}_pred': [value, value] for axis in 'xyz'},
+    })
+    original = frame.copy(deep=True)
+    with np.errstate(over='raise', invalid='raise'):
+        got = evaluate(frame)
+    assert got['energy_mae_per_atom'] / abs(value) == pytest.approx(1.)
+    assert got['force_component_mae'] / abs(value) == pytest.approx(1.)
+    assert got['force_vector_mae'] / abs(value) == pytest.approx(3 ** .5)
+    assert got['force_vector_rmse'] / abs(value) == pytest.approx(3 ** .5)
+    assert np.isfinite(per_structure(frame).select_dtypes('number').to_numpy()).all()
+    pd.testing.assert_frame_equal(frame, original)
+
+
+@pytest.mark.parametrize('magnitude', [1e308, 1e-308])
+def test_stable_mae_preserves_structure_and_component_weighting(magnitude):
+    import numpy as np
+    frame = pd.DataFrame({
+        'structure_id': ['a', 'a', 'b'], 'element': ['H', 'H', 'Li'], 'n_atoms': [2, 2, 1],
+        'energy_true': [0., 0., 0.], 'energy_pred': [magnitude, magnitude, -magnitude],
+        **{f'f{axis}_true': [0., 0., 0.] for axis in 'xyz'},
+        'fx_pred': [magnitude, -magnitude, 0.],
+        'fy_pred': [0., magnitude, 0.], 'fz_pred': [0., 0., 0.],
+    })
+    with np.errstate(over='raise', invalid='raise'):
+        got = evaluate(frame)
+    assert got['energy_mae_per_atom'] / magnitude == pytest.approx(.75)
+    assert got['force_component_mae'] / magnitude == pytest.approx(1 / 3)
+    assert got['force_vector_mae'] / magnitude == pytest.approx((1 + 2 ** .5) / 3)
+
+
+def test_stable_mae_is_zero_for_zero_errors():
+    frame = pd.read_csv('examples/predictions.csv')
+    for name in ('energy', 'fx', 'fy', 'fz'):
+        frame[name + '_pred'] = frame[name + '_true']
+    got = evaluate(frame)
+    assert all(got[name] == 0 for name in (
+        'energy_mae_per_atom', 'force_component_mae', 'force_vector_mae'))
